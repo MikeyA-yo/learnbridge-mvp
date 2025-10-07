@@ -9,6 +9,7 @@ import { ArrowLeft, BookOpen } from 'lucide-react';
 import { lessons } from '@/lib/lessons-data';
 import { useLanguage } from '@/lib/language-context';
 import { useAudioNavigation } from '../../../lib/vosk-audio-navigation-context';
+import { findBestCommandMatch } from '@/lib/text-recognition';
 import type { MathTopic } from '@/lib/types';
 
 function TopicContent() {
@@ -79,12 +80,16 @@ function TopicContent() {
     const handleAudioCommand = (event: CustomEvent) => {
       const { command, text } = event.detail;
       if (command === 'genericCommand') {
-        // Try to match lesson names
-        const matchedLesson = topicLessons.find(
-          (lesson) =>
-            lesson.title[language].toLowerCase().includes(text.toLowerCase()) ||
-            text.toLowerCase().includes(lesson.title[language].toLowerCase())
-        );
+        // Try fuzzy matching lesson names using Levenshtein-based matcher
+        const lessonCandidates = topicLessons.map((l) => l.title[language]);
+        const match = findBestCommandMatch(text, lessonCandidates, { threshold: 0.6, allowPartial: true });
+        const matchedLesson = match
+          ? topicLessons.find((l) => l.title[language] === match.command)
+          : topicLessons.find(
+              (lesson) =>
+                lesson.title[language].toLowerCase().includes(text.toLowerCase()) ||
+                text.toLowerCase().includes(lesson.title[language].toLowerCase())
+            );
         if (matchedLesson) {
           const message = t('navigatingToLesson', {
             english: `Going to ${matchedLesson.title[language]}`,

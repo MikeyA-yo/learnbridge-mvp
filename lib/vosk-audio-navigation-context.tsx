@@ -14,7 +14,7 @@ import { useLanguage } from "./language-context";
 import { createNigerianUtterance } from "./voice-utils";
 import { lessons } from "./lessons-data";
 import { createModel, KaldiRecognizer } from "vosk-browser";
-import { findBestCommandMatch } from "./text-recognition";
+import { findBestCommandMatch, preprocessASRText } from "./text-recognition";
 
 // --- IMPORTANT ---
 // You need to provide the URL to your Vosk model.
@@ -231,11 +231,12 @@ export function VoskAudioNavigationProvider({
   const handleVoiceCommand = useCallback(
     (command: string) => {
       console.log("🗣️ [Vosk] Processing command:", command);
-      const normalizedCommand = command.toLowerCase().trim();
+  const normalizedCommand = command.toLowerCase().trim();
+  const preprocessed = preprocessASRText(normalizedCommand);
 
       // Fuzzy global navigation using Levenshtein-based matcher
       const fuzzy = (candidates: string[], threshold = 0.58) =>
-        !!findBestCommandMatch(normalizedCommand, candidates, {
+        !!findBestCommandMatch(preprocessed || normalizedCommand, candidates, {
           threshold,
           allowPartial: true,
           preferLonger: true,
@@ -611,55 +612,97 @@ export function VoskAudioNavigationProvider({
         }
       }
 
-      // Topic-specific commands
-      if (
-        /\b(basic\s*ma(th|tt|ch|n|ts)?|music\s*matt|among)\b/i.test(normalizedCommand) ||
-        (language !== 'english' && /\b(lissafin\s*farko|lissafi\s*na\s*asali)\b/i.test(normalizedCommand))
-      ) {
-        setAnnouncement(
-          t("goingToBasic", {
-            english: "Going to Basic Math",
-            hausa: "Zuwa Lissafin Asali",
-            kanuri: "Lissafin Asali zuwa",
-            arabic: "الانتقال إلى الرياضيات الأساسية",
-          })
-        );
-        speakText(announcement, "medium");
-        router.push("/topics/basic");
-        return;
+      // Topic-specific commands (fuzzy match to tolerate ASR errors like "basic months")
+      const topicMatch = findBestCommandMatch(normalizedCommand, [
+        "basic math",
+        "intermediate math",
+        "algebra",
+      ], { threshold: 0.58, allowPartial: true });
+
+      if (topicMatch) {
+        const cmd = topicMatch.command.toLowerCase();
+        if (cmd.includes("basic")) {
+          setAnnouncement(
+            t("goingToBasic", {
+              english: "Going to Basic Math",
+              hausa: "Zuwa Lissafin Asali",
+              kanuri: "Lissafin Asali zuwa",
+              arabic: "الانتقال إلى الرياضيات الأساسية",
+            })
+          );
+          speakText(announcement, "medium");
+          router.push("/topics/basic");
+          return;
+        }
+        if (cmd.includes("intermediate")) {
+          setAnnouncement(
+            t("goingToIntermediate", {
+              english: "Going to Intermediate Math",
+              hausa: "Zuwa Lissafin Matsakaici",
+              kanuri: "Lissafin Matsakaici zuwa",
+              arabic: "الانتقال إلى الرياضيات المتوسطة",
+            })
+          );
+          speakText(announcement, "medium");
+          router.push("/topics/intermediate");
+          return;
+        }
+        if (cmd.includes("algebra")) {
+          setAnnouncement(
+            t("goingToAlgebra", {
+              english: "Going to Algebra",
+              hausa: "Zuwa Algebra",
+              kanuri: "Algebra zuwa",
+              arabic: "الانتقال إلى الجبر",
+            })
+          );
+          speakText(announcement, "medium");
+          router.push("/topics/algebra");
+          return;
+        }
       }
 
-      if (
-        /\b(intermediate\s*ma(th|tt|ch|n|ts)?)\b/i.test(normalizedCommand) ||
-        (language !== 'english' && /\b(lissafin\s*matsakaici|lissafi\s*na\s*matsakaici)\b/i.test(normalizedCommand))
-      ) {
-        setAnnouncement(
-          t("goingToIntermediate", {
-            english: "Going to Intermediate Math",
-            hausa: "Zuwa Lissafin Matsakaici",
-            kanuri: "Lissafin Matsakaici zuwa",
-            arabic: "الانتقال إلى الرياضيات المتوسطة",
-          })
-        );
-        speakText(announcement, "medium");
-        router.push("/topics/intermediate");
-        return;
-      }
-
-      if (
-        /\b(algebra)\b/i.test(normalizedCommand)
-      ) {
-        setAnnouncement(
-          t("goingToAlgebra", {
-            english: "Going to Algebra",
-            hausa: "Zuwa Algebra",
-            kanuri: "Algebra zuwa",
-            arabic: "الانتقال إلى الجبر",
-          })
-        );
-        speakText(announcement, "medium");
-        router.push("/topics/algebra");
-        return;
+      // Fallback: language-specific exact checks (keep existing translations)
+      if (language !== 'english') {
+        if (/\b(lissafin\s*farko|lissafi\s*na\s*asali)\b/i.test(normalizedCommand)) {
+          setAnnouncement(
+            t("goingToBasic", {
+              english: "Going to Basic Math",
+              hausa: "Zuwa Lissafin Asali",
+              kanuri: "Lissafin Asali zuwa",
+              arabic: "الانتقال إلى الرياضيات الأساسية",
+            })
+          );
+          speakText(announcement, "medium");
+          router.push("/topics/basic");
+          return;
+        }
+        if (/\b(lissafin\s*matsakaici|lissafi\s*na\s*matsakaici)\b/i.test(normalizedCommand)) {
+          setAnnouncement(
+            t("goingToIntermediate", {
+              english: "Going to Intermediate Math",
+              hausa: "Zuwa Lissafin Matsakaici",
+              kanuri: "Lissafin Matsakaici zuwa",
+              arabic: "الانتقال إلى الرياضيات المتوسطة",
+            })
+          );
+          speakText(announcement, "medium");
+          router.push("/topics/intermediate");
+          return;
+        }
+        if (/\b(algebra)\b/i.test(normalizedCommand)) {
+          setAnnouncement(
+            t("goingToAlgebra", {
+              english: "Going to Algebra",
+              hausa: "Zuwa Algebra",
+              kanuri: "Algebra zuwa",
+              arabic: "الانتقال إلى الجبر",
+            })
+          );
+          speakText(announcement, "medium");
+          router.push("/topics/algebra");
+          return;
+        }
       }
 
       const startPracticeCommands = {

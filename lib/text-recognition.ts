@@ -18,6 +18,43 @@ export function tokenize(s: string): string[] {
   return n.split(' ').filter(Boolean);
 }
 
+// Quick ASR preprocessing to correct common mis-hearings before fuzzy matching.
+// This maps frequently-observed mistaken words to their likely intended tokens.
+export function preprocessASRText(s: string): string {
+  let n = normalizeText(s);
+  if (!n) return n;
+
+  // Common substitutions observed from ASR: make these lowercase, word-boundary aware
+  const subs: Array<[RegExp, string]> = [
+    [/\bmonths\b/g, 'math'],
+    [/\bmuch\b/g, 'math'],
+    [/\bmatt\b/g, 'math'],
+    [/\bmat\b/g, 'math'],
+    [/\bmaths\b/g, 'math'],
+    [/\badditional\b/g, 'addition'],
+    [/\badditional\b/g, 'addition'],
+    [/\baddition(al)?\b/g, 'addition'],
+    [/\badmission\b/g, 'addition'],
+    [/\bedition\b/g, 'addition'],
+    [/\bmusic\b/g, 'basic'],
+    [/\bamong\b/g, 'algebra'],
+    // common filler phrases that sometimes appear — remove them
+    [/\band if im\b/g, ''],
+    [/\band if i m\b/g, ''],
+    [/\band if i'?m\b/g, ''],
+    [/\bi'?ll be shown\b/g, ''],
+    [/\bi differ\b/g, ''],
+  ];
+
+  for (const [re, to] of subs) {
+    n = n.replace(re, to);
+  }
+
+  // Collapse spaces again
+  n = n.replace(/\s+/g, ' ').trim();
+  return n;
+}
+
 // Levenshtein distance (iterative, memory-optimized)
 export function levenshteinDistance(a: string, b: string): number {
   if (a === b) return 0;
