@@ -15,7 +15,7 @@ function TopicContent() {
   const router = useRouter();
   const params = useParams();
   const { language, setLanguage, t } = useLanguage();
-  const { speakText, setCurrentFocus, isAudioNavigationMode } = useAudioNavigation();
+  const { speakText, setCurrentFocus, isAudioNavigationMode, announcePage } = useAudioNavigation();
   const [announcement, setAnnouncement] = useState(''); // For ARIA live region
 
   useEffect(() => {
@@ -61,20 +61,18 @@ function TopicContent() {
     if (isAudioNavigationMode && topic) {
       const topicTitle = topicTitles[topic][language];
       setCurrentFocus(`Topic: ${topicTitle}`);
-      setAnnouncement(
+      const announcementText =
         language === 'english'
           ? `Topic: ${topicTitle}. Available lessons: ${topicLessons.map((lesson) => lesson.title[language]).join(', ')}. Say the lesson name to navigate to it, or say 'Go back' to return to dashboard.`
           : language === 'hausa'
           ? `Jigo: ${topicTitle}. Darussa da ake da su: ${topicLessons.map((lesson) => lesson.title[language]).join(', ')}. Ka ce sunan darasi don zuwa gare shi, ko ka ce 'Koma baya' don komawa dashboard.`
           : language === 'kanuri'
           ? `Jigo: ${topicTitle}. Darussa cikin: ${topicLessons.map((lesson) => lesson.title[language]).join(', ')}. Darasi suna ce gare shi zuwa don, ko 'Baya koma' ce dashboard komawa don.`
-          : `الموضوع: ${topicTitle}. الدروس المتاحة: ${topicLessons.map((lesson) => lesson.title[language]).join(', ')}. قل اسم الدرس للانتقال إليه، أو قل 'العودة' للعودة إلى لوحة القيادة.`
-      );
-      if (isAudioNavigationMode) {
-        speakText(announcement, 'medium');
-      }
+          : `الموضوع: ${topicTitle}. الدروس المتاحة: ${topicLessons.map((lesson) => lesson.title[language]).join(', ')}. قل اسم الدرس للانتقال إليه، أو قل 'العودة' للعودة إلى لوحة القيادة.`;
+      
+      announcePage(window.location.pathname, announcementText, 'medium');
     }
-  }, [isAudioNavigationMode, topic, language, setCurrentFocus, topicTitles, topicLessons, speakText]);
+  }, [isAudioNavigationMode]);
 
   // Listen for audio navigation commands
   useEffect(() => {
@@ -121,7 +119,7 @@ function TopicContent() {
         window.removeEventListener('audioNavigationCommand', handleAudioCommand as EventListener);
       };
     }
-  }, [isAudioNavigationMode, topicLessons, language, speakText, router, t, setAnnouncement, announcement]);
+  }, [isAudioNavigationMode, topicLessons, language, speakText, router, t]);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-primary/20 via-background to-secondary/20">

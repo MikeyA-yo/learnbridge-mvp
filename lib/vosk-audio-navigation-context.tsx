@@ -14,6 +14,7 @@ import { useLanguage } from "./language-context";
 import { createNigerianUtterance } from "./voice-utils";
 import { lessons } from "./lessons-data";
 import { createModel, KaldiRecognizer } from "vosk-browser";
+import { findBestCommandMatch } from "./text-recognition";
 
 // --- IMPORTANT ---
 // You need to provide the URL to your Vosk model.
@@ -35,6 +36,7 @@ interface AudioNavigationContextType {
   announceCurrentFocus: () => void;
   setCurrentFocus: (focus: string | null) => void;
   setAnnouncement: (text: string) => void;
+    announcePage: (path: string, text: string, priority?: "low" | "medium" | "high") => void;   
 }
 
 const VoskAudioNavigationContext = createContext<
@@ -62,6 +64,10 @@ export function VoskAudioNavigationProvider({
   const audioContextRef = useRef<AudioContext | null>(null);
   const isAudioNavigationModeRef = useRef(isAudioNavigationMode);
   const mountedRef = useRef(mounted);
+  const isSpeakingRef = useRef(isSpeaking);
+  const helpRepetitionCounter = useRef(0);
+  const pageAnnouncementTracker = useRef<Record<string, boolean>>({});
+  const lastAnnouncedPath = useRef<string | null>(null);
 
   const router = useRouter();
   const { language, t } = useLanguage();
@@ -73,6 +79,10 @@ export function VoskAudioNavigationProvider({
   useEffect(() => {
     mountedRef.current = mounted;
   }, [mounted]);
+
+  useEffect(() => {
+    isSpeakingRef.current = isSpeaking;
+  }, [isSpeaking]);
 
   useEffect(() => {
     setMounted(true);
@@ -92,8 +102,19 @@ export function VoskAudioNavigationProvider({
   ];
 
   const speakText = useCallback(
-    (text: string, priority: "low" | "medium" | "high" = "medium") => {
+    (text: string, priority: "low" | "medium" | "high" = "medium", forcePath: string | null = null) => {
       if (!text) return;
+
+      const currentPath = window.location.pathname;
+      if (forcePath === currentPath && lastAnnouncedPath.current === currentPath) {
+        console.log(`[AudioNav] Announcement for ${currentPath} already made. Skipping.`);
+        return;
+      }
+      
+      if (forcePath) {
+        lastAnnouncedPath.current = forcePath;
+      }
+
       setAnnouncement(text);
       setSpeechQueue((prev) => {
         const newItem = { text, priority };
@@ -122,35 +143,47 @@ export function VoskAudioNavigationProvider({
     }
   }, [currentFocus, speakText]);
 
+  const announcePage = useCallback((path: string, text: string, priority: "low" | "medium" | "high" = "medium") => {
+    if (pageAnnouncementTracker.current[path]) {
+      console.log(`[AudioNav] Page announcement for ${path} already made. Skipping.`);
+      return;
+    }
+    speakText(text, priority);
+    pageAnnouncementTracker.current[path] = true;
+  }, [speakText]);
+
   useEffect(() => {
     if (speechQueue.length > 0 && !isSpeaking && "speechSynthesis" in window) {
       const nextItem = speechQueue[0];
       setSpeechQueue((prev) => prev.slice(1));
       setIsSpeaking(true);
 
-      const user = getUser();
-      const userSettings = user?.settings
-        ? {
-            audioSpeed: user.settings.audioSpeed,
-            audioPitch: user.settings.audioPitch,
-          }
-        : undefined;
-      const utterance =
-        language !== "english"
-          ? createNigerianUtterance(nextItem.text, language, userSettings)
-          : new SpeechSynthesisUtterance(nextItem.text);
+      // Add a delay before speaking the next item
+      setTimeout(() => {
+        const user = getUser();
+        const userSettings = user?.settings
+          ? {
+              audioSpeed: user.settings.audioSpeed,
+              audioPitch: user.settings.audioPitch,
+            }
+          : undefined;
+        const utterance =
+          language !== "english"
+            ? createNigerianUtterance(nextItem.text, language, userSettings)
+            : new SpeechSynthesisUtterance(nextItem.text);
 
-      if (language === "english") {
-        utterance.lang = "en-US";
-        const audioSpeed = userSettings?.audioSpeed ?? "normal";
-        utterance.rate =
-          audioSpeed === "slow" ? 0.7 : audioSpeed === "very-slow" ? 0.5 : 0.9;
-        utterance.pitch = userSettings?.audioPitch === "high" ? 1.2 : 1;
-      }
+        if (language === "english") {
+          utterance.lang = "en-US";
+          const audioSpeed = userSettings?.audioSpeed ?? "normal";
+          utterance.rate =
+            audioSpeed === "slow" ? 0.7 : audioSpeed === "very-slow" ? 0.5 : 0.9;
+          utterance.pitch = userSettings?.audioPitch === "high" ? 1.2 : 1;
+        }
 
-      utterance.onend = () => setIsSpeaking(false);
-      utterance.onerror = () => setIsSpeaking(false);
-      speechSynthesis.speak(utterance);
+        utterance.onend = () => setIsSpeaking(false);
+        utterance.onerror = () => setIsSpeaking(false);
+        speechSynthesis.speak(utterance);
+      }, 500); 
     }
   }, [speechQueue, isSpeaking, language]);
 
@@ -186,6 +219,7 @@ export function VoskAudioNavigationProvider({
       if ("speechSynthesis" in window) speechSynthesis.cancel();
       setSpeechQueue([]);
       setIsSpeaking(false);
+      pageAnnouncementTracker.current = {}; // Reset tracker
       setShowDeactivationMessage(true);
       setTimeout(() => {
         setShowDeactivationMessage(false);
@@ -199,10 +233,24 @@ export function VoskAudioNavigationProvider({
       console.log("🗣️ [Vosk] Processing command:", command);
       const normalizedCommand = command.toLowerCase().trim();
 
-      // Global navigation commands
+      // Fuzzy global navigation using Levenshtein-based matcher
+      const fuzzy = (candidates: string[], threshold = 0.58) =>
+        !!findBestCommandMatch(normalizedCommand, candidates, {
+          threshold,
+          allowPartial: true,
+          preferLonger: true,
+        });
+
       if (
-        /\b(go\s*to\s*dashboard)\b/i.test(normalizedCommand) ||
-        /\b(zuwa\s*dashboard|dashboard\s*zuwa)\b/i.test(normalizedCommand)
+        fuzzy([
+          'dashboard',
+          'dash board',
+          'dark book',
+          'dash',
+          'board',
+          'go dashboard',
+          'go to dashboard',
+        ]) || /\b(zuwa\s*dashboard|dashboard\s*zuwa)\b/i.test(normalizedCommand)
       ) {
         const message = t("goingToDashboard", {
           english: "Going to Dashboard",
@@ -218,8 +266,7 @@ export function VoskAudioNavigationProvider({
       }
 
       if (
-        /\b(go\s*to\s*progress)\b/i.test(normalizedCommand) ||
-        /\b(zuwa\s*progress|progress\s*zuwa)\b/i.test(normalizedCommand)
+        fuzzy(['progress', 'prog', 'go progress', 'go to progress', 'progress page']) || /\b(zuwa\s*progress|progress\s*zuwa)\b/i.test(normalizedCommand)
       ) {
         const message = t("goingToProgress", {
           english: "Going to Progress",
@@ -234,8 +281,7 @@ export function VoskAudioNavigationProvider({
       }
 
       if (
-        /\b(go\s*to\s*settings)\b/i.test(normalizedCommand) ||
-        /\b(zuwa\s*settings|settings\s*zuwa)\b/i.test(normalizedCommand)
+        fuzzy(['settings', 'set', 'go settings', 'go to settings', 'settings page']) || /\b(zuwa\s*settings|settings\s*zuwa)\b/i.test(normalizedCommand)
       ) {
         const message = t("goingToSettings", {
           english: "Going to Settings",
@@ -250,8 +296,7 @@ export function VoskAudioNavigationProvider({
       }
 
       if (
-        /\b(go\s*to\s*lessons?)\b/i.test(normalizedCommand) ||
-        /\b(zuwa\s*darussa|darussa\s*zuwa)\b/i.test(normalizedCommand)
+        fuzzy(['lessons', 'lesson', 'go lessons', 'go to lessons', 'topics']) || /\b(zuwa\s*darussa|darussa\s*zuwa)\b/i.test(normalizedCommand)
       ) {
         const message = t("goingToLessons", {
           english: "Going to Lessons",
@@ -266,8 +311,7 @@ export function VoskAudioNavigationProvider({
       }
 
       if (
-        /\b(go\s*back)\b/i.test(normalizedCommand) ||
-        /\b(koma\s*baya|baya\s*koma)\b/i.test(normalizedCommand)
+        fuzzy(['back', 'go back', 'return', 'koma baya']) || /\b(koma\s*baya|baya\s*koma)\b/i.test(normalizedCommand)
       ) {
         const message = t("goingBack", {
           english: "Going back",
@@ -282,8 +326,7 @@ export function VoskAudioNavigationProvider({
       }
 
       if (
-        /\b(exit)\b/i.test(normalizedCommand) ||
-        /\b(fita|dakatar)\b/i.test(normalizedCommand)
+        fuzzy(['exit', 'quit', 'stop', 'fita']) || /\b(fita|dakatar)\b/i.test(normalizedCommand)
       ) {
         stopListening();
 
@@ -569,66 +612,9 @@ export function VoskAudioNavigationProvider({
       }
 
       // Topic-specific commands
-      const basicMathCommands = {
-        english: ["basic math", "basic mathematics"],
-        hausa: ["lissafin farko", "lissafi na asali"],
-        kanuri: ["lissafin farko", "lissafi asali"],
-        arabic: ["الرياضيات الأساسية", "الأساسية"],
-      };
-
-      const intermediateMathCommands = {
-        english: ["intermediate math", "intermediate mathematics"],
-        hausa: ["lissafin matsakaici", "lissafi na matsakaici"],
-        kanuri: ["lissafin matsakaici", "lissafi matsakaici"],
-        arabic: ["الرياضيات المتوسطة", "المتوسطة"],
-      };
-
-      const algebraCommands = {
-        english: ["algebra"],
-        hausa: ["algebra"],
-        kanuri: ["algebra"],
-        arabic: ["الجبر"],
-      };
-
-      const startPracticeCommands = {
-        english: ["start practice", "begin practice", "start"],
-        hausa: ["fara aiki", "fara horawa"],
-        kanuri: ["fara aiki", "fara horawa"],
-        arabic: ["ابدأ التمرين", "ابدأ"],
-      };
-
-      const readQuestionCommands = {
-        english: ["read question", "repeat question", "hear question"],
-        hausa: ["karanta tambaya", "maimaita tambaya"],
-        kanuri: ["karanta tambaya", "maimaita tambaya"],
-        arabic: ["اقرأ السؤال", "كرر السؤال"],
-      };
-
-      const nextQuestionCommands = {
-        english: ["next question", "next"],
-        hausa: ["tambaya ta gaba", "na gaba"],
-        kanuri: ["tambaya ta gaba", "na gaba"],
-        arabic: ["السؤال التالي", "التالي"],
-      };
-
-      const stopPracticeCommands = {
-        english: ["stop practice", "stop", "end practice"],
-        hausa: ["dakatar da aiki", "ƙare aiki"],
-        kanuri: ["dakatar da aiki", "ƙare aiki"],
-        arabic: ["توقف عن التمرين", "إنهاء"],
-      };
-
-      const helpCommands = {
-        english: ["help", "commands", "what can i say"],
-        hausa: ["taimako", "umarni", "me za na iya yi"],
-        kanuri: ["taimako", "umarni", "me za na iya yi"],
-        arabic: ["مساعدة", "أوامر", "ماذا يمكنني أن أقول"],
-      };
-
       if (
-        basicMathCommands[language].some((cmd) =>
-          normalizedCommand.includes(cmd)
-        )
+        /\b(basic\s*ma(th|tt|ch|n|ts)?|music\s*matt|among)\b/i.test(normalizedCommand) ||
+        (language !== 'english' && /\b(lissafin\s*farko|lissafi\s*na\s*asali)\b/i.test(normalizedCommand))
       ) {
         setAnnouncement(
           t("goingToBasic", {
@@ -644,9 +630,8 @@ export function VoskAudioNavigationProvider({
       }
 
       if (
-        intermediateMathCommands[language].some((cmd) =>
-          normalizedCommand.includes(cmd)
-        )
+        /\b(intermediate\s*ma(th|tt|ch|n|ts)?)\b/i.test(normalizedCommand) ||
+        (language !== 'english' && /\b(lissafin\s*matsakaici|lissafi\s*na\s*matsakaici)\b/i.test(normalizedCommand))
       ) {
         setAnnouncement(
           t("goingToIntermediate", {
@@ -662,7 +647,7 @@ export function VoskAudioNavigationProvider({
       }
 
       if (
-        algebraCommands[language].some((cmd) => normalizedCommand.includes(cmd))
+        /\b(algebra)\b/i.test(normalizedCommand)
       ) {
         setAnnouncement(
           t("goingToAlgebra", {
@@ -677,6 +662,13 @@ export function VoskAudioNavigationProvider({
         return;
       }
 
+      const startPracticeCommands = {
+        english: ["start practice", "begin practice", "start"],
+        hausa: ["fara aiki", "fara horawa"],
+        kanuri: ["fara aiki", "fara horawa"],
+        arabic: ["ابدأ التمرين", "ابدأ"],
+      };
+      // Add missing block for startPracticeCommands
       if (
         startPracticeCommands[language].some((cmd) =>
           normalizedCommand.includes(cmd)
@@ -699,75 +691,108 @@ export function VoskAudioNavigationProvider({
         return;
       }
 
-      if (
-        readQuestionCommands[language].some((cmd) =>
-          normalizedCommand.includes(cmd)
-        )
-      ) {
-        setAnnouncement(
-          t("readingQuestion", {
-            english: "Reading question",
-            hausa: "Karanta tambaya",
-            kanuri: "Karanta tambaya",
-            arabic: "قراءة السؤال",
-          })
-        );
-        speakText(announcement, "medium");
-        window.dispatchEvent(
-          new CustomEvent("audioNavigationCommand", {
-            detail: { command: "readQuestion" },
-          })
-        );
-        return;
-      }
-
-      if (
-        nextQuestionCommands[language].some((cmd) =>
-          normalizedCommand.includes(cmd)
-        )
-      ) {
-        setAnnouncement(
-          t("nextQuestion", {
-            english: "Moving to next question",
-            hausa: "Tambaya ta gaba",
-            kanuri: "Tambaya ta gaba",
-            arabic: "الانتقال إلى السؤال التالي",
-          })
-        );
-        speakText(announcement, "medium");
-        window.dispatchEvent(
-          new CustomEvent("audioNavigationCommand", {
-            detail: { command: "nextQuestion" },
-          })
-        );
-        return;
-      }
-
-      if (
-        stopPracticeCommands[language].some((cmd) =>
-          normalizedCommand.includes(cmd)
-        )
-      ) {
-        setAnnouncement(
-          t("stoppingPractice", {
-            english: "Stopping practice",
-            hausa: "Dakatar da aiki",
-            kanuri: "Dakatar da aiki",
-            arabic: "إيقاف التمرين",
-          })
-        );
-        speakText(announcement, "medium");
-        window.dispatchEvent(
-          new CustomEvent("audioNavigationCommand", {
-            detail: { command: "stopPractice" },
-          })
-        );
-        return;
-      }
-
-      if (
-        helpCommands[language].some((cmd) => normalizedCommand.includes(cmd))
-      ) {
+      // Add these command objects before their usage (e.g., above handleVoiceCommand)
+      const readQuestionCommands = {
+        english: ["read question", "repeat question"],
+        hausa: ["karanta tambaya", "maimaita tambaya"],
+        kanuri: ["karanta tambaya", "maimaita tambaya"],
+        arabic: ["قراءة السؤال", "كرر السؤال"],
+      };
+      const nextQuestionCommands = {
+        english: ["next question"],
+        hausa: ["tambaya ta gaba"],
+        kanuri: ["tambaya ta gaba"],
+        arabic: ["السؤال التالي"],
+      };
+      const stopPracticeCommands = {
+        english: ["stop practice"],
+        hausa: ["dakatar da aiki"],
+        kanuri: ["dakatar da aiki"],
+        arabic: ["إيقاف التمرين"],
+      };
+      const helpCommands = {
+        english: ["help"],
+        hausa: ["taimako"],
+        kanuri: ["taimako"],
+        arabic: ["مساعدة"],
+      };
+      
+            if (
+              readQuestionCommands[language].some((cmd) =>
+                normalizedCommand.includes(cmd)
+              )
+            ) {
+              setAnnouncement(
+                t("readingQuestion", {
+                  english: "Reading question",
+                  hausa: "Karanta tambaya",
+                  kanuri: "Karanta tambaya",
+                  arabic: "قراءة السؤال",
+                })
+              );
+              speakText(announcement, "medium");
+              window.dispatchEvent(
+                new CustomEvent("audioNavigationCommand", {
+                  detail: { command: "readQuestion" },
+                })
+              );
+              return;
+            }
+      
+            if (
+              nextQuestionCommands[language].some((cmd) =>
+                normalizedCommand.includes(cmd)
+              )
+            ) {
+              setAnnouncement(
+                t("nextQuestion", {
+                  english: "Moving to next question",
+                  hausa: "Tambaya ta gaba",
+                  kanuri: "Tambaya ta gaba",
+                  arabic: "الانتقال إلى السؤال التالي",
+                })
+              );
+              speakText(announcement, "medium");
+              window.dispatchEvent(
+                new CustomEvent("audioNavigationCommand", {
+                  detail: { command: "nextQuestion" },
+                })
+              );
+              return;
+            }
+      
+            if (
+              stopPracticeCommands[language].some((cmd) =>
+                normalizedCommand.includes(cmd)
+              )
+            ) {
+              setAnnouncement(
+                t("stoppingPractice", {
+                  english: "Stopping practice",
+                  hausa: "Dakatar da aiki",
+                  kanuri: "Dakatar da aiki",
+                  arabic: "إيقاف التمرين",
+                })
+              );
+              speakText(announcement, "medium");
+              window.dispatchEvent(
+                new CustomEvent("audioNavigationCommand", {
+                  detail: { command: "stopPractice" },
+                })
+              );
+              return;
+            }
+      
+            if (
+              helpCommands[language].some((cmd) => normalizedCommand.includes(cmd))
+            ) {
+        if (helpRepetitionCounter.current >= 3) {
+          const message = "You have already requested help multiple times. Please try a different command.";
+          setAnnouncement(message);
+          speakText(message, "high");
+          helpRepetitionCounter.current = 0; // Reset after notifying user
+          return;
+        }
         const currentPath = window.location.pathname;
         let helpText = "";
 
@@ -776,7 +801,7 @@ export function VoskAudioNavigationProvider({
               english: "Available commands: Global - 'Go to Progress', 'Go to Settings', 'Go to Lessons'. Topics - 'Basic Math', 'Intermediate Math', 'Algebra'. Say 'Exit' to exit audio navigation mode.",
               hausa: "Umarnin da ake iya amfani da su: Gaba daya - 'Zuwa Progress', 'Zuwa Settings', 'Zuwa Darussa'. Batutuwa - 'Lissafin Asali', 'Lissafin Matsakaici', 'Algebra'. Ka ce 'Fita' don fita daga yanayin kewayawa da murya.",
               kanuri: "Umarni da ake iya amfani: Gaba daya - 'Progress zuwa', 'Settings zuwa', 'Darussa zuwa'. Batutuwa - 'Lissafin Asali', 'Lissafin Matsakaici', 'Algebra'. 'Fita' ce murya kewayawa yanayi daga fita don.",
-              arabic: ""
+              arabic: "الأوامر العامة: 'الانتقال إلى لوحة القيادة'، 'الانتقال إلى التقدم'، 'الانتقال إلى الإعدادات'، 'الانتقال إلى الدروس'. قل 'مساعدة' للمزيد من الأوامر. للخروج من وضع التنقل الصوتي، قل 'خروج'.",
           });
         } else if (currentPath.includes("/topics/")) {
           helpText = t("helpTopic", {
@@ -803,24 +828,22 @@ export function VoskAudioNavigationProvider({
 
         setAnnouncement(helpText);
         speakText(helpText, "high");
+        helpRepetitionCounter.current += 1;
         return;
       }
 
-      // Generic command handling
-      setAnnouncement(
-        t("processingCommand", {
-          english: `Processing command: ${normalizedCommand}`,
-          hausa: `Ana sarrafa umarni: ${normalizedCommand}`,
-          kanuri: `Umarni sarrafa: ${normalizedCommand}`,
-          arabic: `جارٍ معالجة الأمر: ${normalizedCommand}`,
-        })
-      );
-      speakText(announcement, "medium");
-      window.dispatchEvent(
-        new CustomEvent("audioNavigationCommand", {
-          detail: { command: "genericCommand", text: normalizedCommand },
-        })
-      );
+      // Reset counter if any other command is issued
+      helpRepetitionCounter.current = 0;
+
+      // Fallback for unrecognized commands
+      const message = t("commandNotFound", {
+        english: "Command not recognized. Please say 'help' for a list of available commands or try again.",
+        hausa: "Ba a gane umarnin ba. Da fatan za a ce 'taimako' don jerin umarni da ake da su ko a sake gwadawa.",
+        kanuri: "Umarni ba a gane ba. 'Taimako' ce don umarni da ake da su ko sake gwadawa.",
+        arabic: "لم يتم التعرف على الأمر. يرجى قول 'مساعدة' للحصول على قائمة بالأوامر المتاحة أو المحاولة مرة أخرى."
+      });
+      setAnnouncement(message);
+      speakText(message, "high");
     },
     [
       router,
@@ -830,6 +853,7 @@ export function VoskAudioNavigationProvider({
       toggleAudioNavigationMode,
       setSpeechQueue,
       stopListening,
+      announcement,
     ]
   );
 
@@ -880,7 +904,7 @@ export function VoskAudioNavigationProvider({
       const processor = audioContext.createScriptProcessor(1024, 1, 1);
 
       processor.onaudioprocess = (event) => {
-        if (!isAudioNavigationModeRef.current) return;
+        if (!isAudioNavigationModeRef.current || isSpeakingRef.current) return;
         try {
           recognizer.acceptWaveform(event.inputBuffer);
         } catch (error) {
@@ -935,6 +959,7 @@ export function VoskAudioNavigationProvider({
         announceCurrentFocus,
         setCurrentFocus,
         setAnnouncement,
+        announcePage,
       }}
     >
       {children}
