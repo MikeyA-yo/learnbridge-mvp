@@ -1,35 +1,65 @@
-<<<<<<< HEAD
-# Learnbridge MVP
+# LearnBridge v2
 
-*Automatically synced with your [v0.app](https://v0.app) deployments*
+LearnBridge v2 is a kid-friendly, interactive learning app built with Next.js and TypeScript. It focuses on short lessons and topics, supports multiple languages, includes audio navigation and voice features, and provides accessibility-focused options such as dyslexia-friendly support and adjustable audio controls.
 
-[![Deployed on Vercel](https://img.shields.io/badge/Deployed%20on-Vercel-black?style=for-the-badge&logo=vercel)](https://vercel.com/oluwatola-ayomides-projects/v0-learnbridge-mvp)
-[![Built with v0](https://img.shields.io/badge/Built%20with-v0.app-black?style=for-the-badge)](https://v0.app/chat/projects/vkgAcq6OTC0)
+Key features
+- Short, card-based lessons and topic browsing
+- Multi-language support with a language selector
+- Audio navigation and enhanced audio controls (play/pause/skip)
+- Voice/recording utilities and a voice-test helper
+- Progress tracking and simple user settings
+- Dyslexia-friendly presentation options
 
-## Overview
+Built with
+- Next.js (app router)
+- TypeScript
+- React components in the `components/` folder
+- Lightweight state/context helpers in `lib/` (language, audio navigation, dyslexia, auth helpers)
 
-This repository will stay in sync with your deployed chats on [v0.app](https://v0.app).
-Any changes you make to your deployed app will be automatically pushed to this repository from [v0.app](https://v0.app).
+Quick start (development)
+1. Install dependencies (requires Node 18+ and pnpm):
 
-## Deployment
+	```powershell
+	pnpm install
+	```
 
-Your project is live at:
+2. Start the dev server:
 
-**[https://vercel.com/oluwatola-ayomides-projects/v0-learnbridge-mvp](https://vercel.com/oluwatola-ayomides-projects/v0-learnbridge-mvp)**
+	```powershell
+	pnpm dev
+	```
 
-## Build your app
+3. Open http://localhost:3000 in your browser.
 
-Continue building your app on:
+Build and run (production)
 
-**[https://v0.app/chat/projects/vkgAcq6OTC0](https://v0.app/chat/projects/vkgAcq6OTC0)**
+```powershell
+pnpm build
+pnpm start
+```
 
-## How It Works
+Project layout (important files/folders)
+- `app/` - Next.js app routes and pages (uses the app router)
+- `components/` - Reusable UI components (cards, UI primitives, audio/selector components)
+- `lib/` - Application contexts and helpers (audio navigation, language, dyslexia support, lessons data)
+- `public/` - Static assets and placeholders
+- `styles/` - Global styles
 
-1. Create and modify your project using [v0.app](https://v0.app)
-2. Deploy your chats from the v0 interface
-3. Changes are automatically pushed to this repository
-4. Vercel deploys the latest version from this repository
-=======
-# learnbridgev2
-An app for teaching kids.
->>>>>>> e68b43293d4258d85c0bdc06ead586707356ff34
+Notable modules
+- `lib/audio-navigation-context.tsx` — audio navigation state and helpers
+- `lib/language-context.tsx` — language selection and persistence
+- `lib/dyslexia-context.tsx` — dyslexia-friendly UI options
+- `components/language-selector.tsx` — language picker component
+
+Contributing
+- Feel free to open issues or PRs. Keep changes small and focused.
+- Follow existing code style in components and use TypeScript types from `lib/types` when available.
+
+Notes
+- This README is intended as a quick orientation. See the source files under `app/`, `components/`, and `lib/` for implementation details.
+
+License
+- MIT (or specify your preferred license)
+
+Contact
+- For questions about the project structure or to propose changes, open an issue in this repository.

@@ -108,7 +108,7 @@ function DashboardContent() {
             <p className="text-muted-foreground text-lg mb-4">{user.username} ({user.email})</p>
             <div className="inline-flex items-center gap-2 bg-gradient-to-r from-accent/20 to-accent/10 px-4 py-2 rounded-full border border-accent/20">
               <Trophy className="h-5 w-5 text-accent animate-float" />
-              <span className="font-semibold text-lg text-accent-foreground">
+              <span className="font-semibold text-black text-lg">
                 {totalStars} {t("stars", translations.stars)}
               </span>
             </div>
