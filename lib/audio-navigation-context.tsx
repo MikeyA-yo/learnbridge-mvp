@@ -39,6 +39,7 @@ export function AudioNavigationProvider({ children }: { children: React.ReactNod
   const restartTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const isAudioNavigationModeRef = useRef(isAudioNavigationMode);
   const mountedRef = useRef(mounted);
+  const criticalErrorRef = useRef(false); // Flag to prevent restart loops
 
   const router = useRouter();
   const { language, t } = useLanguage();
@@ -98,7 +99,10 @@ export function AudioNavigationProvider({ children }: { children: React.ReactNod
       setIsSpeaking(true);
 
       const user = getUser();
-      const userSettings = user?.settings || {};
+      const userSettings =
+        user?.settings
+          ? { audioSpeed: user.settings.audioSpeed, audioPitch: user.settings.audioPitch }
+          : undefined;
       const utterance =
         language !== 'english'
           ? createNigerianUtterance(nextItem.text, language, userSettings)
@@ -106,8 +110,9 @@ export function AudioNavigationProvider({ children }: { children: React.ReactNod
 
       if (language === 'english') {
         utterance.lang = 'en-US';
-        utterance.rate = userSettings.audioSpeed === 'slow' ? 0.7 : userSettings.audioSpeed === 'very-slow' ? 0.5 : 0.9;
-        utterance.pitch = userSettings.audioPitch === 'high' ? 1.2 : 1;
+        const audioSpeed = userSettings?.audioSpeed ?? 'normal';
+        utterance.rate = audioSpeed === 'slow' ? 0.7 : audioSpeed === 'very-slow' ? 0.5 : 0.9;
+        utterance.pitch = userSettings?.audioPitch === 'high' ? 1.2 : 1;
       }
 
       utterance.onend = () => setIsSpeaking(false);
@@ -913,6 +918,7 @@ export function AudioNavigationProvider({ children }: { children: React.ReactNod
       newRecognition.onstart = () => {
         console.log('🎙️ Speech recognition started');
         setIsListening(true);
+        criticalErrorRef.current = false; // Reset critical error flag on successful start
         setAnnouncement(
           t('listeningStarted', {
             english: 'Listening for voice commands...',
@@ -956,6 +962,7 @@ export function AudioNavigationProvider({ children }: { children: React.ReactNod
           case 'audio-capture':
           case 'not-allowed':
           case 'service-not-allowed':
+            criticalErrorRef.current = true; // Set critical error flag
             setAnnouncement(
               t('micError', {
                 english: 'Microphone error. Please check permissions.',
@@ -967,6 +974,7 @@ export function AudioNavigationProvider({ children }: { children: React.ReactNod
             speakText(announcement, 'high');
             return;
           case 'network':
+            criticalErrorRef.current = true; // Set critical error flag
             setAnnouncement(
               t('networkError', {
                 english: 'Network error. Please check your connection.',
@@ -988,7 +996,7 @@ export function AudioNavigationProvider({ children }: { children: React.ReactNod
             if (isAudioNavigationModeRef.current && mountedRef.current) {
               startListening();
             }
-          }, 1000);
+          }, 5000); // talking to fast does not help
         }
       };
 
@@ -1001,7 +1009,8 @@ export function AudioNavigationProvider({ children }: { children: React.ReactNod
           restartTimeoutRef.current = null;
         }
 
-        if (isAudioNavigationModeRef.current && mountedRef.current) {
+        // Only restart if audio navigation is on and no critical error occurred
+        if (isAudioNavigationModeRef.current && mountedRef.current && !criticalErrorRef.current) {
           restartTimeoutRef.current = setTimeout(() => {
             if (isAudioNavigationModeRef.current && mountedRef.current) {
               startListening();

@@ -1,6 +1,6 @@
 "use client"
 
-import { useAudioNavigation } from '../lib/audio-navigation-context'
+import { useAudioNavigation } from '../lib/vosk-audio-navigation-context'
 
 export function AudioNavigationNotification() {
   const { showDeactivationMessage } = useAudioNavigation()

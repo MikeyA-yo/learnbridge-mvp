@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { ArrowLeft, Trophy, Star, Target, TrendingUp } from "lucide-react"
 import { lessons } from "@/lib/lessons-data"
 import { useLanguage, translations } from "@/lib/language-context"
-import { useAudioNavigation } from "../../lib/audio-navigation-context"
+import { useAudioNavigation } from "../../lib/vosk-audio-navigation-context"
 
 export default function ProgressPage() {
   const router = useRouter()

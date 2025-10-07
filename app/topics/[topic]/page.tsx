@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { ArrowLeft, BookOpen } from 'lucide-react';
 import { lessons } from '@/lib/lessons-data';
 import { useLanguage } from '@/lib/language-context';
-import { useAudioNavigation } from '../../../lib/audio-navigation-context';
+import { useAudioNavigation } from '../../../lib/vosk-audio-navigation-context';
 import type { MathTopic } from '@/lib/types';
 
 function TopicContent() {

@@ -7,6 +7,7 @@ import { DyslexiaProvider } from '../lib/dyslexia-context'
 import { AudioNavigationProvider } from '../lib/audio-navigation-context'
 import { AudioNavigationNotification } from '../components/audio-navigation-notification'
 import './globals.css'
+import { VoskAudioNavigationProvider } from '@/lib/vosk-audio-navigation-context'
 
 export const metadata: Metadata = {
   title: 'Learnbridge - Math in Your Language',
@@ -32,10 +33,10 @@ export default function RootLayout({
       <body className={`font-sans ${GeistSans.variable} ${GeistMono.variable}`}>
         <LanguageProvider>
           <DyslexiaProvider>
-            <AudioNavigationProvider>
+            <VoskAudioNavigationProvider>
               {children}
               <AudioNavigationNotification />
-            </AudioNavigationProvider>
+            </VoskAudioNavigationProvider>
           </DyslexiaProvider>
         </LanguageProvider>
         <Analytics />

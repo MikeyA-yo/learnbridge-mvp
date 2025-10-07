@@ -11,7 +11,7 @@ import { ArrowLeft, SettingsIcon } from 'lucide-react';
 import { LanguageSelector } from '@/components/language-selector';
 import { useLanguage, translations } from '@/lib/language-context';
 import { useDyslexia } from '../../lib/dyslexia-context';
-import { useAudioNavigation } from '../../lib/audio-navigation-context';
+import { useAudioNavigation } from '../../lib/vosk-audio-navigation-context';
 import type { Language } from '@/lib/types';
 
 function SettingsContent() {
