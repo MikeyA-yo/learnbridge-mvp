@@ -59,7 +59,7 @@ Notes
 - This README is intended as a quick orientation. See the source files under `app/`, `components/`, and `lib/` for implementation details.
 
 License
-- MIT (or specify your preferred license)
+- MIT
 
 Contact
 - For questions about the project structure or to propose changes, open an issue in this repository.
